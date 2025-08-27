@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检索报告生成应用</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>检索报告生成应用</h1>
+            <p>请选择司法辖区和问题</p>
+        </header>
+
+        <main>
+            <div class="form-section">
+                <div class="jurisdiction-section">
+                    <h2>选择司法辖区</h2>
+                    <select id="jurisdictionSelect" class="jurisdiction-select" title="选择司法辖区"></select>
+                        
+                        <!-- 司法辖区选项将通过JavaScript动态加载 -->
+                    </select>
+                </div>
+
+                <div class="questions-section">
+                    <h2>选择问题（可多选）</h2>
+                    <div id="questionsContainer" class="questions-grid">
+                        <!-- 问题选项将通过JavaScript动态加载 -->
+                    </div>
+                </div>
+
+                <div class="action-section">
+                    <button id="generateReport" class="generate-btn" disabled>
+                        <span class="btn-text">生成报告</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="results-section hidden" id="resultsSection">
+                <h2>检索报告</h2>
+                <div id="reportHeader" class="report-header">
+    <div id="reportTitleContainer"></div>
+    <button id="copyReportBtn" class="copy-btn">一键复制报告</button>
+</div>
+                <div id="reportContent" class="report-content">
+                    <!-- 报告内容将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
