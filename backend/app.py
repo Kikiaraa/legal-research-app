@@ -69,7 +69,8 @@ QUESTIONS = {
 def load_knowledge_base(jurisdiction=None):
     """加载知识库内容"""
     knowledge_content = ""
-    knowledge_dir = '../knowledge-base'
+    # 使用绝对路径确保在不同环境中都能正确找到知识库目录
+    knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../knowledge-base')
     
     if not os.path.exists(knowledge_dir):
         return knowledge_content
