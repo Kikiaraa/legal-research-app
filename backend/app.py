@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import json
 import sys
 import glob
+import docx
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -31,8 +32,14 @@ JURISDICTIONS = [
     "德国",
     "西班牙",
     "爱尔兰",
-    "荷兰"
+    "荷兰",
+    "阿根廷",
+    "阿塞拜疆",
+    "土耳其"
 ]
+
+# 欧盟成员国（适用GDPR）
+EU_COUNTRIES = ["法国", "德国", "西班牙", "爱尔兰", "荷兰"]
 
 # 问题模板
 QUESTIONS = {
@@ -77,20 +84,40 @@ def load_knowledge_base(jurisdiction=None):
     
     # 如果指定了司法辖区，只加载对应文件
     if jurisdiction and jurisdiction in JURISDICTIONS:
-        # 匹配以"司法辖区_"开头的所有文件
-        pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.txt")
-        matching_files = glob.glob(pattern)
+        # 匹配以"司法辖区_"开头的txt和docx文件
+        txt_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.txt")
+        docx_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.docx")
+        matching_files = glob.glob(txt_pattern) + glob.glob(docx_pattern)
+        
+        # 如果是欧盟成员国，自动添加GDPR文件
+        if jurisdiction in EU_COUNTRIES:
+            gdpr_file = os.path.join(knowledge_dir, "欧盟_GDPR.docx")
+            if os.path.exists(gdpr_file) and gdpr_file not in matching_files:
+                matching_files.append(gdpr_file)
         
         if matching_files:
             for filepath in matching_files:
                 filename = os.path.basename(filepath)
                 try:
-                    # 尝试使用utf-8编码
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        # 从文件名提取法规名称
-                        law_name = filename.replace(f"{jurisdiction}_", "").replace(".txt", "")
-                        knowledge_content += f"\n\n=== {jurisdiction} - {law_name} ===\n\n{content}"
+                    if filename.lower().endswith('.txt'):
+                        # 尝试使用utf-8编码
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            # 从文件名提取法规名称
+                            law_name = filename.replace(f"{jurisdiction}_", "").replace(".txt", "")
+                            knowledge_content += f"""
+{filename}
+=== {jurisdiction} - {law_name} ===
+{content}"""
+                    elif filename.lower().endswith('.docx'):
+                        # 使用python-docx读取docx文件
+                        doc = docx.Document(filepath)
+                        content = '\n'.join([para.text for para in doc.paragraphs])
+                        law_name = filename.replace(f"{jurisdiction}_", "").replace(".docx", "")
+                        knowledge_content += f"""
+{filename}
+=== {jurisdiction} - {law_name} ===
+{content}"""
                 except UnicodeDecodeError:
                     try:
                         # 尝试使用gbk编码
@@ -122,7 +149,8 @@ def load_knowledge_base(jurisdiction=None):
     else:
         # 加载所有文件（保持向后兼容）
         for filename in os.listdir(knowledge_dir):
-            if filename.endswith('.txt') and not filename.startswith('README'):
+            # 支持txt和docx格式，排除README文件
+            if (filename.lower().endswith(('.txt', '.docx'))) and not filename.startswith('README'):
                 try:
                     # 尝试使用utf-8编码
                     with open(os.path.join(knowledge_dir, filename), 'r', encoding='utf-8') as f:
@@ -246,10 +274,18 @@ def research():
                 'answer': answer
             })
     
+    # 检查知识库内容是否过长
+    content_truncated = len(knowledge_content) > 5000
+    
     # 构建报告格式
     report = f"出海目标国数据隐私准入法律检索报告\n\n具体要求请见下文\n\n(一) {jurisdiction}\n\n{introduction}"
+    
+    # 添加内容截断警告
+    if content_truncated:
+        report += "\n\n⚠️ 注意：由于知识库内容过长，部分信息已被截断以适应模型上下文限制，可能影响回答的完整性。"
+    
     for result in results:
-        report += f"\n\nQ{result['question_id']}：{result['question_title']}\nA：{result['answer']}"
+        report += f"\n\nQ{result['question_id']}: {result['question_title']}\nA: {result['answer']}"
     
     return jsonify({'report': report})
 
