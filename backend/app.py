@@ -74,12 +74,13 @@ QUESTIONS = {
 }
 
 def load_knowledge_base(jurisdiction=None):
-    """加载知识库内容"""
+    """加载知识库内容 - 仅在请求时加载，不在启动时加载"""
     knowledge_content = ""
     # 使用绝对路径确保在不同环境中都能正确找到知识库目录
     knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../knowledge-base')
     
     if not os.path.exists(knowledge_dir):
+        print(f"警告：知识库目录不存在: {knowledge_dir}")
         return knowledge_content
     
     # 如果指定了司法辖区，只加载对应文件
