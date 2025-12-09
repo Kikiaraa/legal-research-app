@@ -36,13 +36,20 @@ async function initApp() {
 async function loadQuestions() {
     try {
         const response = await fetch(`${API_BASE_URL}/questions`);
-        if (!response.ok) throw new Error('获取问题列表失败');
+        if (!response.ok) {
+            throw new Error(`获取问题列表失败: ${response.status}`);
+        }
         
-        questions = await response.json();
+        const text = await response.text();
+        if (!text) {
+            throw new Error('服务器返回空响应');
+        }
+        
+        questions = JSON.parse(text);
         renderQuestions();
     } catch (error) {
         console.error('加载问题失败:', error);
-        showError('加载问题列表失败');
+        showError(`加载问题列表失败: ${error.message}`);
     }
 }
 
@@ -50,13 +57,20 @@ async function loadQuestions() {
 async function loadJurisdictions() {
     try {
         const response = await fetch(`${API_BASE_URL}/jurisdictions`);
-        if (!response.ok) throw new Error('获取司法辖区列表失败');
+        if (!response.ok) {
+            throw new Error(`获取司法辖区列表失败: ${response.status}`);
+        }
         
-        jurisdictions = await response.json();
+        const text = await response.text();
+        if (!text) {
+            throw new Error('服务器返回空响应');
+        }
+        
+        jurisdictions = JSON.parse(text);
         renderJurisdictions();
     } catch (error) {
         console.error('加载司法辖区失败:', error);
-        showError('加载司法辖区列表失败');
+        showError(`加载司法辖区列表失败: ${error.message}`);
     }
 }
 
@@ -190,11 +204,23 @@ async function generateReport() {
         });
         
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || '生成报告失败');
+            const text = await response.text();
+            let errorMsg = '生成报告失败';
+            try {
+                const error = JSON.parse(text);
+                errorMsg = error.error || errorMsg;
+            } catch (e) {
+                errorMsg = text || errorMsg;
+            }
+            throw new Error(errorMsg);
         }
         
-        const result = await response.json();
+        const text = await response.text();
+        if (!text) {
+            throw new Error('服务器返回空响应');
+        }
+        
+        const result = JSON.parse(text);
         displayReport(result);
         
     } catch (error) {

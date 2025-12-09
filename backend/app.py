@@ -289,17 +289,6 @@ def research():
     
     return jsonify({'report': report})
 
-# 提供前端静态文件
-@app.route('/')
-def serve_index():
-    return send_from_directory(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend'), 'index.html')
-
-@app.route('/<path:path>')
-def serve_static(path):
-    
-    return send_from_directory(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend'), path)
-
-
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5001))
