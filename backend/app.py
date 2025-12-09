@@ -211,11 +211,18 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
     }
     
     try:
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data)
+        print(f"正在调用Deepseek API...")
+        # 设置60秒超时（连接超时10秒，读取超时60秒）
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 60))
         response.raise_for_status()
         result = response.json()
+        print(f"API调用成功")
         return result['choices'][0]['message']['content']
+    except requests.exceptions.Timeout:
+        print(f"API调用超时")
+        return "错误：AI服务响应超时，请稍后重试。"
     except Exception as e:
+        print(f"API调用失败: {str(e)}")
         return f"API调用失败: {str(e)}"
 
 @app.route('/api/questions', methods=['GET'])
@@ -267,22 +274,19 @@ def research():
         return jsonify({'error': '请选择问题'}), 400
     
     # 加载指定司法辖区的知识库
+    print(f"开始处理 {jurisdiction} 的检索请求，问题数量: {len(question_ids)}")
     knowledge_content = load_knowledge_base(jurisdiction)
     if not knowledge_content:
         return jsonify({'error': f'未找到{jurisdiction}的法律法规文件，请添加以"{jurisdiction}_"开头的.txt文件'}), 404
     
-    # 生成摘要
-    summary_prompt = f"请根据以下{jurisdiction}的法律法规内容，撰写一段数据隐私准入制度的摘要（不超过200字，仅概述核心结论，不要包含法律依据）：{knowledge_content[:5000]}"
-    summary = call_deepseek_api(summary_prompt, knowledge_content, jurisdiction)
-    
-    # 生成引言
-    intro_prompt = f"请根据以下{jurisdiction}的法律法规内容，撰写一段关于数据隐私准入制度的简介（不超过200字，仅概述核心内容，不要包含法律依据）：{knowledge_content[:5000]}"
-    introduction = call_deepseek_api(intro_prompt, knowledge_content, jurisdiction)
+    # 生成引言（简化，不调用API，直接使用固定文本）
+    introduction = f"以下是基于{jurisdiction}相关法律法规的数据隐私准入制度检索结果。"
     
     results = []
-    for question_id in question_ids:
+    for idx, question_id in enumerate(question_ids, 1):
         if question_id in QUESTIONS:
             question = QUESTIONS[question_id]
+            print(f"处理问题 {idx}/{len(question_ids)}: {question['title']}")
             prompt = f"针对{jurisdiction}，{question['prompt']}。请仅回答此问题，不要涉及其他任何问题的内容。"
             
             # 调用AI API
@@ -293,6 +297,8 @@ def research():
                 'question_title': question['title'],
                 'answer': answer
             })
+    
+    print(f"所有问题处理完成，共 {len(results)} 个问题")
     
     # 检查知识库内容是否过长
     content_truncated = len(knowledge_content) > 5000
