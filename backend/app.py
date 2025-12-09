@@ -74,7 +74,10 @@ QUESTIONS = {
 }
 
 def load_knowledge_base(jurisdiction=None):
-    """加载知识库内容 - 仅在请求时加载，不在启动时加载"""
+    """加载知识库内容 - 仅在请求时加载指定司法辖区的文件"""
+    import time
+    start_time = time.time()
+    
     knowledge_content = ""
     # 使用绝对路径确保在不同环境中都能正确找到知识库目录
     knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../knowledge-base')
@@ -85,6 +88,7 @@ def load_knowledge_base(jurisdiction=None):
     
     # 如果指定了司法辖区，只加载对应文件
     if jurisdiction and jurisdiction in JURISDICTIONS:
+        print(f"开始加载 {jurisdiction} 的知识库文件...")
         # 匹配以"司法辖区_"开头的txt和docx文件
         txt_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.txt")
         docx_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.docx")
@@ -97,8 +101,10 @@ def load_knowledge_base(jurisdiction=None):
                 matching_files.append(gdpr_file)
         
         if matching_files:
+            print(f"找到 {len(matching_files)} 个匹配文件")
             for filepath in matching_files:
                 filename = os.path.basename(filepath)
+                file_start = time.time()
                 try:
                     if filename.lower().endswith('.txt'):
                         # 尝试使用utf-8编码
@@ -110,11 +116,14 @@ def load_knowledge_base(jurisdiction=None):
 {filename}
 === {jurisdiction} - {law_name} ===
 {content}"""
+                        print(f"  ✓ 加载 {filename} 耗时: {time.time() - file_start:.2f}秒")
                     elif filename.lower().endswith('.docx'):
                         # 使用python-docx读取docx文件
+                        print(f"  正在解析docx文件: {filename}...")
                         doc = docx.Document(filepath)
                         content = '\n'.join([para.text for para in doc.paragraphs])
                         law_name = filename.replace(f"{jurisdiction}_", "").replace(".docx", "")
+                        print(f"  ✓ 加载 {filename} 耗时: {time.time() - file_start:.2f}秒")
                         knowledge_content += f"""
 {filename}
 === {jurisdiction} - {law_name} ===
@@ -168,6 +177,8 @@ def load_knowledge_base(jurisdiction=None):
                 except Exception as e:
                     print(f"读取文件 {filename} 失败: {e}")
     
+    elapsed_time = time.time() - start_time
+    print(f"知识库加载完成，耗时: {elapsed_time:.2f}秒，内容长度: {len(knowledge_content)} 字符")
     return knowledge_content
 
 def call_deepseek_api(prompt, knowledge_content, jurisdiction):
