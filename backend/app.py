@@ -219,7 +219,15 @@ def get_jurisdictions():
     app.logger.info('Received request for jurisdictions list')
     return jsonify(JURISDICTIONS)
 
-
+@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查端点 - 快速响应，不加载知识库"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'legal-research-app',
+        'api_configured': DEEPSEEK_API_KEY is not None
+    })
 
 @app.route('/', methods=['GET'])
 def serve_frontend():
