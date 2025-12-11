@@ -18,10 +18,21 @@
             <div class="form-section">
                 <div class="jurisdiction-section">
                     <h2>选择司法辖区</h2>
-                    <select id="jurisdictionSelect" class="jurisdiction-select" title="选择司法辖区"></select>
-                        
-                        <!-- 司法辖区选项将通过JavaScript动态加载 -->
-                    </select>
+                    <div class="custom-select-wrapper">
+                        <div id="customJurisdictionSelect" class="custom-select" title="选择司法辖区">
+                            <div class="select-display">
+                                <span class="select-text">请选择司法辖区</span>
+                                <span class="select-arrow">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                                        <path stroke="#6b7280" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 8l4 4 4-4"/>
+                                    </svg>
+                                </span>
+                            </div>
+                            <div class="select-options" id="jurisdictionOptions">
+                                <!-- 选项将通过JavaScript动态加载 -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="questions-section">
@@ -42,7 +53,7 @@
                 <h2>检索报告</h2>
                 <div id="reportHeader" class="report-header">
     <div id="reportTitleContainer"></div>
-    <button id="copyReportBtn" class="copy-btn">一键复制报告</button>
+    <button id="exportWordBtn" class="export-btn">📄 导出Word文档</button>
 </div>
                 <div id="reportContent" class="report-content">
                     <!-- 报告内容将通过JavaScript动态生成 -->

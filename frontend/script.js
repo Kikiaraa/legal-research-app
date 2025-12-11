@@ -10,7 +10,10 @@ let selectedQuestions = new Set();
 let selectedJurisdiction = '';
 
 // DOM元素
-const jurisdictionSelect = document.getElementById('jurisdictionSelect');
+const customJurisdictionSelect = document.getElementById('customJurisdictionSelect');
+const selectDisplay = customJurisdictionSelect.querySelector('.select-display');
+const selectText = customJurisdictionSelect.querySelector('.select-text');
+const selectOptions = document.getElementById('jurisdictionOptions');
 const questionsContainer = document.getElementById('questionsContainer');
 const generateBtn = document.getElementById('generateReport');
 const resultsSection = document.getElementById('resultsSection');
@@ -78,14 +81,19 @@ async function loadJurisdictions() {
 
 // 渲染司法辖区列表
 function renderJurisdictions() {
-    jurisdictionSelect.innerHTML = '<option value="">请选择司法辖区</option>';
+    selectOptions.innerHTML = '';
     
     jurisdictions.forEach(jurisdiction => {
-        const option = document.createElement('option');
-        option.value = jurisdiction;
+        const option = document.createElement('div');
+        option.className = 'select-option';
         option.textContent = jurisdiction;
-        jurisdictionSelect.appendChild(option);
+        option.dataset.value = jurisdiction;
+        selectOptions.appendChild(option);
     });
+    
+    // 重置选择状态
+    selectDisplay.classList.remove('selected');
+    selectText.classList.add('placeholder');
 }
 
 // 渲染问题列表
@@ -111,17 +119,30 @@ document.addEventListener('DOMContentLoaded', initApp);
 
 // 设置事件监听器
 function setupEventListeners() {
-    // 司法辖区选择
-    jurisdictionSelect.addEventListener('change', (e) => {
-        selectedJurisdiction = e.target.value;
-        
-        // 添加选择动画
-        e.target.classList.add('selecting');
-        setTimeout(() => {
-            e.target.classList.remove('selecting');
-        }, 400);
-        
-        updateGenerateButton();
+    // 自定义下拉框事件
+    selectDisplay.addEventListener('click', () => {
+        const isActive = selectDisplay.classList.contains('active');
+        if (isActive) {
+            closeDropdown();
+        } else {
+            openDropdown();
+        }
+    });
+
+    // 选项点击事件
+    selectOptions.addEventListener('click', (e) => {
+        if (e.target.classList.contains('select-option')) {
+            const value = e.target.dataset.value;
+            selectJurisdiction(value);
+            closeDropdown();
+        }
+    });
+
+    // 点击外部关闭下拉框
+    document.addEventListener('click', (e) => {
+        if (!customJurisdictionSelect.contains(e.target)) {
+            closeDropdown();
+        }
     });
     
     // 问题选择
@@ -148,12 +169,17 @@ function setupEventListeners() {
         }
     });
     
-    // 问题项点击
+    // 问题项点击 - 优化版本
     questionsContainer.addEventListener('click', (e) => {
         const questionItem = e.target.closest('.question-item');
-        if (questionItem && e.target.type !== 'checkbox') {
+        if (questionItem) {
             const checkbox = questionItem.querySelector('input[type="checkbox"]');
-            checkbox.click();
+            
+            // 如果点击的不是checkbox本身，则触发checkbox
+            if (e.target.type !== 'checkbox' && e.target.tagName !== 'LABEL') {
+                e.preventDefault();
+                checkbox.click();
+            }
         }
     });
     
@@ -161,8 +187,8 @@ function setupEventListeners() {
     generateBtn.addEventListener('click', generateReport);
 // 使用事件委托确保动态元素事件绑定
  document.addEventListener('click', function(event) {
-   if (event.target.matches('#copyReportBtn')) {
-     copyReport();
+   if (event.target.matches('#exportWordBtn')) {
+     exportWordDocument();
    }
  });
 }
@@ -181,7 +207,8 @@ async function generateReport() {
         return;
     }
     
-    const questionIds = Array.from(selectedQuestions);
+    // 按问题ID的数字顺序排序（1,2,3,4,5,6,7）
+    const questionIds = Array.from(selectedQuestions).sort((a, b) => parseInt(a) - parseInt(b));
     
     if (questionIds.length === 0) {
         showError('请选择至少一个问题');
@@ -244,15 +271,72 @@ function setLoadingState(loading) {
     }
 }
 
-// 显示报告
-async function copyReport() {
-  const reportContent = document.getElementById('reportContent').innerText;
-  try {
-    await navigator.clipboard.writeText(reportContent);
-    alert('报告已成功复制到剪贴板！');
-  } catch (err) {
-    alert('复制失败: ' + err.message);
-  }
+// 导出Word文档
+async function exportWordDocument() {
+    const reportContent = document.getElementById('reportContent').innerText;
+    
+    if (!reportContent || !selectedJurisdiction) {
+        showError('没有可导出的报告内容');
+        return;
+    }
+    
+    try {
+        // 显示导出状态
+        const exportBtn = document.getElementById('exportWordBtn');
+        const originalText = exportBtn.textContent;
+        exportBtn.textContent = '📄 导出中...';
+        exportBtn.disabled = true;
+        
+        const response = await fetch(`${API_BASE_URL}/export-word`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                report: reportContent,
+                jurisdiction: selectedJurisdiction
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '导出失败');
+        }
+        
+        // 获取文件名
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `法律检索报告_${selectedJurisdiction}_${new Date().toISOString().slice(0,10)}.docx`;
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (filenameMatch) {
+                filename = filenameMatch[1].replace(/['"]/g, '');
+            }
+        }
+        
+        // 下载文件
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // 显示成功消息
+        showSuccess('Word文档已成功下载！');
+        
+    } catch (error) {
+        console.error('导出Word文档失败:', error);
+        showError(error.message || '导出Word文档失败，请重试');
+    } finally {
+        // 恢复按钮状态
+        const exportBtn = document.getElementById('exportWordBtn');
+        exportBtn.textContent = '📄 导出Word文档';
+        exportBtn.disabled = false;
+    }
 }
 
 function displayReport(result) {
@@ -264,15 +348,13 @@ function displayReport(result) {
     
     // 直接显示格式化后的报告内容
     reportContent.innerHTML = `<div class="report-content-text">${formatReportContent(result.report)}</div>`;
-const copyBtn = document.getElementById('copyReportBtn');
-if (copyBtn) {
-    copyBtn.classList.add('visible');
-copyBtn.style.display = 'block';
+const exportBtn = document.getElementById('exportWordBtn');
+if (exportBtn) {
+    exportBtn.classList.add('visible');
+    exportBtn.style.display = 'block';
     // 强制移除可能隐藏样式
-    copyBtn.classList.remove('hidden');
-    copyBtn.removeAttribute('hidden');
-    // 确保点击事件绑定
-
+    exportBtn.classList.remove('hidden');
+    exportBtn.removeAttribute('hidden');
 }
     
     resultsSection.style.display = 'block';
@@ -289,7 +371,48 @@ function formatReportContent(content) {
 
 // 显示错误信息
 function showError(message) {
-    alert(message); // 简单的错误提示，可以后续改进为更好的UI
+    alert('❌ ' + message);
+}
+
+// 显示成功信息
+function showSuccess(message) {
+    alert('✅ ' + message);
+}
+
+// 自定义下拉框辅助函数
+function openDropdown() {
+    selectDisplay.classList.add('active');
+    selectOptions.classList.add('show');
+}
+
+function closeDropdown() {
+    selectDisplay.classList.remove('active');
+    selectOptions.classList.remove('show');
+}
+
+function selectJurisdiction(value) {
+    selectedJurisdiction = value;
+    selectText.textContent = value;
+    selectText.classList.remove('placeholder');
+    
+    // 添加选中样式到显示区域
+    selectDisplay.classList.add('selected');
+    
+    // 添加选择动画
+    selectDisplay.classList.add('selecting');
+    setTimeout(() => {
+        selectDisplay.classList.remove('selecting');
+    }, 300);
+    
+    // 更新选中状态
+    selectOptions.querySelectorAll('.select-option').forEach(option => {
+        option.classList.remove('selected');
+        if (option.dataset.value === value) {
+            option.classList.add('selected');
+        }
+    });
+    
+    updateGenerateButton();
 }
 
 // 页面加载完成后初始化

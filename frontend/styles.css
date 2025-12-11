@@ -18,24 +18,36 @@ body {
 }
 
 header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
     text-align: center;
     margin-bottom: 40px;
-    padding: 30px 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 40px 20px;
+    background: linear-gradient(135deg, #84C0E9 0%, #37419A 100%);
     color: white;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    min-height: 160px;
 }
 
 header h1 {
     font-size: 2.5rem;
-    margin-bottom: 10px;
+    margin: 0 0 15px 0;
     font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
 }
+
+
 
 header p {
     font-size: 1.1rem;
     opacity: 0.9;
+    margin: 0;
 }
 
 .form-section {
@@ -48,40 +60,170 @@ header p {
 
 .jurisdiction-section,
 .questions-section {
-    margin-bottom: 30px;
+    margin-bottom: 35px;
 }
 
 .jurisdiction-section h2,
 .questions-section h2 {
-    font-size: 1.4rem;
-    margin-bottom: 15px;
+    font-size: 1.5rem;
+    margin-bottom: 20px;
     color: #2d3748;
-    border-bottom: 2px solid #e2e8f0;
-    padding-bottom: 8px;
+    border-bottom: 2px solid #84C0E9;
+    padding-bottom: 10px;
+    font-weight: 600;
 }
 
-.jurisdiction-select {
+.jurisdiction-section h2 {
+    margin-bottom: 25px;
+}
+
+/* 自定义下拉框样式 */
+.custom-select-wrapper {
+    position: relative;
     width: 100%;
-    padding: 12px 16px;
+}
+
+.custom-select {
+    position: relative;
+    width: 100%;
+}
+
+.select-display {
+    width: 100%;
+    padding: 18px 50px 18px 24px;
     border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 1rem;
+    border-radius: 12px;
+    font-size: 1.2rem;
+    font-weight: 500;
     background-color: white;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     position: relative;
+    min-height: 56px;
+    color: #2d3748;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
-.jurisdiction-select:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+.select-display:hover {
+    border-color: #cbd5e0;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
 }
 
-.jurisdiction-select:hover {
-    border-color: #cbd5e0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.select-display.active {
+    border-color: #84C0E9;
+    box-shadow: 0 0 0 4px rgba(132, 192, 233, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.select-display.selected {
+    border-color: #84C0E9;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e6f3ff 100%);
+    box-shadow: 0 4px 12px rgba(132, 192, 233, 0.2);
+}
+
+.select-display.selected:hover {
+    background: linear-gradient(135deg, #e6f3ff 0%, #dbeafe 100%);
+    transform: translateY(-1px);
+}
+
+.select-display.selected .select-text {
+    color: #1a365d;
+    font-weight: 600;
+}
+
+.select-display.selecting {
+    animation: selectPulse 0.3s ease;
+}
+
+.select-text {
+    flex: 1;
+    color: #2d3748;
+}
+
+.select-text.placeholder {
+    color: #9ca3af;
+}
+
+.select-arrow {
+    width: 18px;
+    height: 18px;
+    transition: transform 0.3s ease;
+}
+
+.select-display.active .select-arrow {
+    transform: rotate(180deg);
+}
+
+.select-arrow svg {
+    width: 100%;
+    height: 100%;
+}
+
+.select-options {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 2px solid #84C0E9;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    max-height: 300px;
+    overflow-y: auto;
+    display: none;
+}
+
+.select-options.show {
+    display: block;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.select-option {
+    padding: 16px 24px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #2d3748;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.select-option:last-child {
+    border-bottom: none;
+}
+
+.select-option:hover {
+    background: linear-gradient(135deg, #f0f7ff 0%, #e6f3ff 100%);
+    color: #1a365d;
+    transform: translateX(4px);
+}
+
+.select-option.selected {
+    background: linear-gradient(135deg, #84C0E9 0%, #37419A 100%);
+    color: white;
+    font-weight: 600;
+}
+
+.select-option.selected:hover {
+    background: linear-gradient(135deg, #6bb6ff 0%, #2d3a8c 100%);
+    transform: translateX(0);
 }
 
 .questions-grid {
@@ -93,27 +235,38 @@ header p {
 .question-item {
     display: flex;
     align-items: flex-start;
-    padding: 15px;
+    padding: 18px;
     border: 2px solid #e2e8f0;
-    border-radius: 8px;
+    border-radius: 12px;
     transition: all 0.3s ease;
     cursor: pointer;
+    user-select: none;
+    position: relative;
 }
 
 .question-item:hover {
     border-color: #cbd5e0;
     background-color: #f7fafc;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .question-item.selected {
-    border-color: #667eea;
-    background-color: #edf2f7;
+    border-color: #84C0E9;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e6f3ff 100%);
+    box-shadow: 0 4px 12px rgba(132, 192, 233, 0.2);
+}
+
+.question-item.selected:hover {
+    background: linear-gradient(135deg, #e6f3ff 0%, #dbeafe 100%);
 }
 
 .question-checkbox {
-    margin-right: 12px;
-    margin-top: 2px;
-    transform: scale(1.2);
+    margin-right: 15px;
+    margin-top: 3px;
+    transform: scale(1.3);
+    cursor: pointer;
+    accent-color: #84C0E9;
 }
 
 .question-label {
@@ -121,6 +274,30 @@ header p {
     font-weight: 500;
     color: #2d3748;
     cursor: pointer;
+    line-height: 1.5;
+    font-size: 1.05rem;
+}
+
+.question-item.selected .question-label {
+    color: #1a365d;
+    font-weight: 600;
+}
+
+.question-item.selecting {
+    animation: selectPulse 0.3s ease;
+}
+
+@keyframes selectPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 6px 20px rgba(132, 192, 233, 0.3);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 .action-section {
@@ -130,7 +307,7 @@ header p {
 }
 
 .generate-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #84C0E9 0%, #37419A 100%);
     color: white;
     border: none;
     padding: 15px 40px;
@@ -144,7 +321,7 @@ header p {
 
 .generate-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 20px rgba(132, 192, 233, 0.3);
 }
 
 .generate-btn:disabled {
@@ -187,28 +364,41 @@ header p {
     font-size: 1.5rem;
 }
 
-.copy-btn {
+.export-btn {
     display: none;
     position: absolute;
     top: 15px;
     right: 15px;
     padding: 10px 20px;
-    background-color: #2ecc71;
+    background: linear-gradient(135deg, #84C0E9 0%, #37419A 100%);
     color: white;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-size: 14px;
+    font-weight: 500;
     z-index: 999;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 12px rgba(132, 192, 233, 0.3);
+    transition: all 0.3s ease;
 }
 
-#reportHeader .copy-btn.visible {
+#reportHeader .export-btn.visible {
     display: block !important;
 }
 
-.copy-btn:hover {
-    background-color: #45a049;
+.export-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(132, 192, 233, 0.4);
+}
+
+.export-btn:active {
+    transform: translateY(0);
+}
+
+.export-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .report-meta {
@@ -229,7 +419,7 @@ header p {
     margin-bottom: 15px;
     font-size: 1.3rem;
     padding-bottom: 8px;
-    border-bottom: 2px solid #667eea;
+    border-bottom: 2px solid #84C0E9;
 }
 
 .report-content-text {

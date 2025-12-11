@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import os
 import requests
@@ -7,6 +7,9 @@ import json
 import sys
 import glob
 import docx
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -73,118 +76,186 @@ QUESTIONS = {
     }
 }
 
+def load_file_content(filepath):
+    """加载单个文件内容，支持txt和docx格式"""
+    filename = os.path.basename(filepath)
+    
+    try:
+        if filename.lower().endswith('.txt'):
+            # 读取txt文件
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                with open(filepath, 'r', encoding='gbk') as f:
+                    return f.read()
+        
+        elif filename.lower().endswith('.docx'):
+            # 读取docx文件
+            doc = docx.Document(filepath)
+            return '\n'.join([para.text for para in doc.paragraphs])
+        
+    except Exception as e:
+        print(f"读取文件 {filename} 失败: {e}")
+        return ""
+    
+    return ""
+
 def load_knowledge_base(jurisdiction=None):
-    """加载知识库内容 - 仅在请求时加载指定司法辖区的文件"""
+    """根据司法辖区加载对应的知识库文件"""
     import time
     start_time = time.time()
     
     knowledge_content = ""
-    # 使用绝对路径确保在不同环境中都能正确找到知识库目录
     knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../knowledge-base')
     
     if not os.path.exists(knowledge_dir):
         print(f"警告：知识库目录不存在: {knowledge_dir}")
         return knowledge_content
     
-    # 如果指定了司法辖区，只加载对应文件
-    if jurisdiction and jurisdiction in JURISDICTIONS:
-        print(f"开始加载 {jurisdiction} 的知识库文件...")
-        # 匹配以"司法辖区_"开头的txt和docx文件
-        txt_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.txt")
-        docx_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.docx")
-        matching_files = glob.glob(txt_pattern) + glob.glob(docx_pattern)
+    if not jurisdiction or jurisdiction not in JURISDICTIONS:
+        print("未指定有效的司法辖区")
+        return knowledge_content
+    
+    print(f"开始加载 {jurisdiction} 的知识库文件...")
+    
+    # 1. 加载该司法辖区的所有文件（{国家}_{法规名称}.txt/docx）
+    txt_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.txt")
+    docx_pattern = os.path.join(knowledge_dir, f"{jurisdiction}_*.docx")
+    matching_files = glob.glob(txt_pattern) + glob.glob(docx_pattern)
+    
+    # 2. 如果是欧盟成员国，自动添加GDPR文件
+    if jurisdiction in EU_COUNTRIES:
+        gdpr_file = os.path.join(knowledge_dir, "欧盟_GDPR.docx")
+        if os.path.exists(gdpr_file) and gdpr_file not in matching_files:
+            matching_files.append(gdpr_file)
+            print(f"  自动添加欧盟GDPR文件")
+    
+    if not matching_files:
+        print(f"未找到 {jurisdiction} 的法律法规文件")
+        return knowledge_content
+    
+    print(f"找到 {len(matching_files)} 个匹配文件")
+    
+    # 3. 加载所有匹配的文件
+    for filepath in matching_files:
+        filename = os.path.basename(filepath)
+        file_start = time.time()
         
-        # 如果是欧盟成员国，自动添加GDPR文件
-        if jurisdiction in EU_COUNTRIES:
-            gdpr_file = os.path.join(knowledge_dir, "欧盟_GDPR.docx")
-            if os.path.exists(gdpr_file) and gdpr_file not in matching_files:
-                matching_files.append(gdpr_file)
-        
-        if matching_files:
-            print(f"找到 {len(matching_files)} 个匹配文件")
-            for filepath in matching_files:
-                filename = os.path.basename(filepath)
-                file_start = time.time()
-                try:
-                    if filename.lower().endswith('.txt'):
-                        # 尝试使用utf-8编码
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                            # 从文件名提取法规名称
-                            law_name = filename.replace(f"{jurisdiction}_", "").replace(".txt", "")
-                            knowledge_content += f"""
-{filename}
-=== {jurisdiction} - {law_name} ===
-{content}"""
-                        print(f"  ✓ 加载 {filename} 耗时: {time.time() - file_start:.2f}秒")
-                    elif filename.lower().endswith('.docx'):
-                        # 使用python-docx读取docx文件
-                        print(f"  正在解析docx文件: {filename}...")
-                        doc = docx.Document(filepath)
-                        content = '\n'.join([para.text for para in doc.paragraphs])
-                        law_name = filename.replace(f"{jurisdiction}_", "").replace(".docx", "")
-                        print(f"  ✓ 加载 {filename} 耗时: {time.time() - file_start:.2f}秒")
-                        knowledge_content += f"""
-{filename}
-=== {jurisdiction} - {law_name} ===
-{content}"""
-                except UnicodeDecodeError:
-                    try:
-                        # 尝试使用gbk编码
-                        with open(filepath, 'r', encoding='gbk') as f:
-                            content = f.read()
-                            law_name = filename.replace(f"{jurisdiction}_", "").replace(".txt", "")
-                            knowledge_content += f"\n\n=== {jurisdiction} - {law_name} ===\n\n{content}"
-                    except Exception as e:
-                        print(f"读取文件 {filename} 失败: {e}")
-                except Exception as e:
-                    print(f"读取文件 {filename} 失败: {e}")
-        else:
-            # 如果没有找到以"司法辖区_"开头的文件，尝试查找旧格式的文件（向后兼容）
-            old_format_file = os.path.join(knowledge_dir, f"{jurisdiction}.txt")
-            if os.path.exists(old_format_file):
-                try:
-                    with open(old_format_file, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        knowledge_content = f"=== {jurisdiction}法律法规 ===\n\n{content}"
-                except UnicodeDecodeError:
-                    try:
-                        with open(old_format_file, 'r', encoding='gbk') as f:
-                            content = f.read()
-                            knowledge_content = f"=== {jurisdiction}法律法规 ===\n\n{content}"
-                    except Exception as e:
-                        print(f"读取文件 {jurisdiction}.txt 失败: {e}")
-                except Exception as e:
-                    print(f"读取文件 {jurisdiction}.txt 失败: {e}")
-    else:
-        # 加载所有文件（保持向后兼容）
-        for filename in os.listdir(knowledge_dir):
-            # 支持txt和docx格式，排除README文件
-            if (filename.lower().endswith(('.txt', '.docx'))) and not filename.startswith('README'):
-                try:
-                    # 尝试使用utf-8编码
-                    with open(os.path.join(knowledge_dir, filename), 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        knowledge_content += f"\n\n=== {filename} ===\n\n{content}"
-                except UnicodeDecodeError:
-                    try:
-                        # 尝试使用gbk编码
-                        with open(os.path.join(knowledge_dir, filename), 'r', encoding='gbk') as f:
-                            content = f.read()
-                            knowledge_content += f"\n\n=== {filename} ===\n\n{content}"
-                    except Exception as e:
-                        print(f"读取文件 {filename} 失败: {e}")
-                except Exception as e:
-                    print(f"读取文件 {filename} 失败: {e}")
+        content = load_file_content(filepath)
+        if content:
+            # 从文件名提取法规名称
+            if filename.startswith(f"{jurisdiction}_"):
+                law_name = filename.replace(f"{jurisdiction}_", "").rsplit('.', 1)[0]
+            elif filename.startswith("欧盟_"):
+                law_name = filename.replace("欧盟_", "").rsplit('.', 1)[0]
+            else:
+                law_name = filename.rsplit('.', 1)[0]
+            
+            knowledge_content += f"""
+
+=== {filename} ===
+{jurisdiction} - {law_name}
+
+{content}
+"""
+            print(f"  ✓ 加载 {filename} 耗时: {time.time() - file_start:.2f}秒")
     
     elapsed_time = time.time() - start_time
     print(f"知识库加载完成，耗时: {elapsed_time:.2f}秒，内容长度: {len(knowledge_content)} 字符")
     return knowledge_content
 
+def extract_relevant_content(knowledge_content, question_prompt, max_chars=8000):
+    """
+    从知识库中提取与问题相关的内容片段
+    """
+    # 定义关键词映射
+    keyword_mapping = {
+        "准入要求": ["注册", "登记", "备案", "许可", "申请", "授权", "缴费", "费用", "通知"],
+        "适用主体": ["数据控制者", "数据处理者", "控制者", "处理者", "主体", "适用", "范围"],
+        "豁免情形": ["豁免", "例外", "不适用", "免除", "排除"],
+        "注册登记": ["注册", "登记", "备案", "申请", "机构", "平台", "网站", "系统"],
+        "缴费": ["费用", "缴费", "收费", "金额", "年费", "注册费", "许可费"],
+        "有效期": ["有效期", "续展", "更新", "延期", "到期", "证书"],
+        "法律责任": ["责任", "处罚", "罚款", "刑事", "民事", "行政", "违法", "制裁"]
+    }
+    
+    # 根据问题内容确定相关关键词
+    relevant_keywords = []
+    for category, keywords in keyword_mapping.items():
+        if any(keyword in question_prompt for keyword in keywords):
+            relevant_keywords.extend(keywords)
+    
+    # 如果没有匹配到特定关键词，使用通用关键词
+    if not relevant_keywords:
+        relevant_keywords = ["数据", "个人", "保护", "法", "条", "规定"]
+    
+    # 按文件分割知识库内容
+    file_sections = knowledge_content.split('\n===')
+    relevant_sections = []
+    
+    for section in file_sections:
+        if not section.strip():
+            continue
+            
+        # 检查是否包含相关关键词
+        section_lower = section.lower()
+        relevance_score = sum(1 for keyword in relevant_keywords if keyword in section_lower)
+        
+        if relevance_score > 0:
+            # 进一步提取相关段落
+            paragraphs = section.split('\n')
+            relevant_paragraphs = []
+            
+            for para in paragraphs:
+                if any(keyword in para for keyword in relevant_keywords):
+                    # 包含前后文上下文
+                    para_index = paragraphs.index(para)
+                    start_idx = max(0, para_index - 1)
+                    end_idx = min(len(paragraphs), para_index + 2)
+                    context = '\n'.join(paragraphs[start_idx:end_idx])
+                    relevant_paragraphs.append(context)
+            
+            if relevant_paragraphs:
+                # 获取文件标题
+                title_line = section.split('\n')[0] if section.split('\n') else "未知文件"
+                section_content = f"{title_line}\n" + '\n---\n'.join(set(relevant_paragraphs))
+                relevant_sections.append(section_content)
+    
+    # 合并相关内容并控制长度
+    filtered_content = '\n\n=== '.join(relevant_sections)
+    
+    # 如果内容仍然过长，进行智能截断
+    if len(filtered_content) > max_chars:
+        # 按重要性排序（包含更多关键词的段落优先）
+        sections_with_score = []
+        for section in relevant_sections:
+            score = sum(1 for keyword in relevant_keywords if keyword in section.lower())
+            sections_with_score.append((score, section))
+        
+        # 按分数排序，优先保留高分内容
+        sections_with_score.sort(key=lambda x: x[0], reverse=True)
+        
+        filtered_content = ""
+        for score, section in sections_with_score:
+            if len(filtered_content) + len(section) <= max_chars:
+                filtered_content += f"\n\n=== {section}"
+            else:
+                break
+    
+    return filtered_content if filtered_content else knowledge_content[:max_chars]
+
 def call_deepseek_api(prompt, knowledge_content, jurisdiction):
-    """调用Deepseek API"""
+    """调用Deepseek API - 优化版本，智能筛选相关内容"""
     if not DEEPSEEK_API_KEY:
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
+    
+    # 提取与问题相关的内容
+    relevant_content = extract_relevant_content(knowledge_content, prompt)
+    content_length = len(relevant_content)
+    
+    print(f"原始内容长度: {len(knowledge_content)} 字符")
+    print(f"筛选后内容长度: {content_length} 字符")
     
     headers = {
         'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
@@ -194,10 +265,18 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
     system_prompt = f"""你是一个专业的法律法规检索助手。请严格根据以下{jurisdiction}的法律法规知识库内容回答问题，不要添加知识库中没有的信息。
 
 {jurisdiction}法律法规知识库内容：
-{knowledge_content}
+{relevant_content}
 
-请严格围绕当前用户问题作答，忽略知识库中与问题无关的内容，仅使用直接相关的知识。回答后使用'法律依据：'标签单独列出法条原文，需从knowledge-base中提取。应注明具体法律法规及条款，条款过长可使用省略号结尾，禁止翻译。
-作答时请勿使用Markdown语法（如 **、#、[]() 等符号）。
+请严格围绕当前用户问题作答，仅使用直接相关的法律条文。回答格式要求：
+1. 先给出明确的结论（有/无/部分适用等）
+2. 简要说明具体情况
+3. 最后使用'法律依据：'标签列出相关法条原文（只需要关键条款，不要全文）
+
+注意：
+- 只引用与问题直接相关的法条
+- 法条过长时可适当省略，用省略号表示
+- 不要使用Markdown语法
+- 不要翻译法条原文
 """
     
     data = {
@@ -207,12 +286,11 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
             {'role': 'user', 'content': prompt}
         ],
         'temperature': 0.1,
-        'max_tokens': 2000
+        'max_tokens': 1500  # 减少token数量，专注于精准回答
     }
     
     try:
         print(f"正在调用Deepseek API...")
-        # 设置60秒超时（连接超时10秒，读取超时60秒）
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 60))
         response.raise_for_status()
         result = response.json()
@@ -273,6 +351,10 @@ def research():
     if not question_ids:
         return jsonify({'error': '请选择问题'}), 400
     
+    # 按问题ID的数字顺序排序，确保输出顺序正确
+    question_ids = sorted(question_ids, key=lambda x: int(x))
+    print(f"问题处理顺序: {question_ids}")
+    
     # 加载指定司法辖区的知识库
     print(f"开始处理 {jurisdiction} 的检索请求，问题数量: {len(question_ids)}")
     knowledge_content = load_knowledge_base(jurisdiction)
@@ -300,20 +382,124 @@ def research():
     
     print(f"所有问题处理完成，共 {len(results)} 个问题")
     
-    # 检查知识库内容是否过长
-    content_truncated = len(knowledge_content) > 5000
-    
     # 构建报告格式
     report = f"出海目标国数据隐私准入法律检索报告\n\n具体要求请见下文\n\n(一) {jurisdiction}\n\n{introduction}"
-    
-    # 添加内容截断警告
-    if content_truncated:
-        report += "\n\n⚠️ 注意：由于知识库内容过长，部分信息已被截断以适应模型上下文限制，可能影响回答的完整性。"
     
     for result in results:
         report += f"\n\nQ{result['question_id']}: {result['question_title']}\nA: {result['answer']}"
     
     return jsonify({'report': report})
+
+def create_word_document(report_data, jurisdiction):
+    """创建Word文档"""
+    # 创建新的Word文档
+    doc = docx.Document()
+    
+    # 设置文档标题
+    title = doc.add_heading('出海目标国数据隐私准入法律检索报告', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # 添加副标题
+    subtitle = doc.add_paragraph(f'司法辖区：{jurisdiction}')
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # 添加生成时间
+    from datetime import datetime
+    time_para = doc.add_paragraph(f'生成时间：{datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")}')
+    time_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # 添加分隔线
+    doc.add_paragraph('=' * 50).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # 解析报告内容
+    report_lines = report_data.split('\n')
+    current_section = None
+    
+    for line in report_lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        if line.startswith('(一)'):
+            # 主标题
+            heading = doc.add_heading(line, level=1)
+        elif line.startswith('Q') and ':' in line:
+            # 问题标题
+            question_heading = doc.add_heading(line, level=2)
+        elif line.startswith('A:'):
+            # 答案内容
+            answer_text = line[2:].strip()  # 移除 "A:" 前缀
+            
+            # 分析答案结构
+            if '法律依据：' in answer_text:
+                # 分离主要内容和法律依据
+                parts = answer_text.split('法律依据：')
+                main_content = parts[0].strip()
+                legal_basis = '法律依据：' + parts[1].strip() if len(parts) > 1 else ''
+                
+                # 添加主要内容
+                if main_content:
+                    content_para = doc.add_paragraph(main_content)
+                    content_para.style = 'Normal'
+                
+                # 添加法律依据（使用不同样式）
+                if legal_basis:
+                    doc.add_paragraph()  # 空行
+                    legal_para = doc.add_paragraph(legal_basis)
+                    legal_para.style = 'Intense Quote'
+            else:
+                # 没有法律依据分离的情况
+                content_para = doc.add_paragraph(answer_text)
+                content_para.style = 'Normal'
+        elif line.startswith('以下是基于'):
+            # 引言
+            intro_para = doc.add_paragraph(line)
+            intro_para.style = 'Normal'
+        elif not line.startswith('出海目标国') and not line.startswith('具体要求'):
+            # 其他内容
+            if line:
+                doc.add_paragraph(line)
+    
+    # 添加页脚
+    doc.add_page_break()
+    footer_para = doc.add_paragraph('本报告由法律法规检索应用自动生成')
+    footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    return doc
+
+@app.route('/api/export-word', methods=['POST'])
+def export_word():
+    """导出Word文档"""
+    try:
+        data = request.json
+        report_content = data.get('report')
+        jurisdiction = data.get('jurisdiction', '未知司法辖区')
+        
+        if not report_content:
+            return jsonify({'error': '报告内容不能为空'}), 400
+        
+        # 创建Word文档
+        doc = create_word_document(report_content, jurisdiction)
+        
+        # 保存到内存
+        doc_io = BytesIO()
+        doc.save(doc_io)
+        doc_io.seek(0)
+        
+        # 生成文件名
+        from datetime import datetime
+        filename = f"法律检索报告_{jurisdiction}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        
+        return send_file(
+            doc_io,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+    except Exception as e:
+        print(f"导出Word文档失败: {str(e)}")
+        return jsonify({'error': f'导出失败: {str(e)}'}), 500
 
 if __name__ == '__main__':
     import os
