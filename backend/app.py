@@ -245,25 +245,25 @@ def extract_relevant_content(knowledge_content, question_prompt, max_chars=8000)
     
     return filtered_content if filtered_content else knowledge_content[:max_chars]
 
-def call_deepseek_api(prompt, knowledge_content, jurisdiction):
-    """调用Deepseek API - 优化版本，智能筛选相关内容"""
+def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
+    """调用Deepseek API - 优化版本，智能筛选相关内容，带重试机制"""
     if not DEEPSEEK_API_KEY:
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
     
-    try:
-        # 提取与问题相关的内容，限制为6000字符以避免请求过大
-        relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=6000)
-        content_length = len(relevant_content)
-        
-        print(f"原始内容长度: {len(knowledge_content)} 字符")
-        print(f"筛选后内容长度: {content_length} 字符")
-        
-        headers = {
-            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        
-        system_prompt = f"""你是一个专业的法律法规检索助手。请严格根据以下{jurisdiction}的法律法规知识库内容回答问题，不要添加知识库中没有的信息。
+    # 提取与问题相关的内容，限制为5000字符以避免请求过大
+    relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=5000)
+    content_length = len(relevant_content)
+    
+    print(f"原始内容长度: {len(knowledge_content)} 字符")
+    print(f"筛选后内容长度: {content_length} 字符")
+    
+    headers = {
+        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+        'Content-Type': 'application/json',
+        'Connection': 'close'  # 避免连接复用问题
+    }
+    
+    system_prompt = f"""你是一个专业的法律法规检索助手。请严格根据以下{jurisdiction}的法律法规知识库内容回答问题，不要添加知识库中没有的信息。
 
 {jurisdiction}法律法规知识库内容：
 {relevant_content}
@@ -279,52 +279,82 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
 - 不要使用Markdown语法
 - 不要翻译法条原文
 """
-        
-        data = {
-            'model': 'deepseek-chat',
-            'messages': [
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': prompt}
-            ],
-            'temperature': 0.1,
-            'max_tokens': 1500  # 减少token数量，专注于精准回答
-        }
-        
-        print(f"正在调用Deepseek API...")
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 90), stream=False)
-        response.raise_for_status()
-        
-        # 检查响应大小
-        content_length = response.headers.get('content-length')
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB限制
-            print(f"警告：API响应过大: {content_length} bytes")
-            return "错误：AI服务响应数据过大，请简化问题或联系管理员。"
-        
-        result = response.json()
-        print(f"API调用成功")
-        
-        # 验证响应结构
-        if 'choices' not in result or not result['choices']:
-            print(f"API响应格式异常: {result}")
+    
+    data = {
+        'model': 'deepseek-chat',
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': prompt}
+        ],
+        'temperature': 0.1,
+        'max_tokens': 1200  # 进一步减少token数量
+    }
+    
+    # 重试机制
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                print(f"重试第 {attempt} 次...")
+                import time
+                time.sleep(2 * attempt)  # 指数退避
+            
+            print(f"正在调用Deepseek API (尝试 {attempt + 1}/{max_retries + 1})...")
+            
+            # 使用session来管理连接
+            with requests.Session() as session:
+                response = session.post(
+                    DEEPSEEK_API_URL, 
+                    headers=headers, 
+                    json=data, 
+                    timeout=(15, 120),  # 连接超时15秒，读取超时120秒
+                    stream=False
+                )
+                response.raise_for_status()
+            
+            # 检查响应大小
+            content_length_header = response.headers.get('content-length')
+            if content_length_header and int(content_length_header) > 5 * 1024 * 1024:  # 5MB限制
+                print(f"警告：API响应过大: {content_length_header} bytes")
+                return "错误：AI服务响应数据过大，请简化问题或联系管理员。"
+            
+            result = response.json()
+            print(f"API调用成功")
+            
+            # 验证响应结构
+            if 'choices' not in result or not result['choices']:
+                print(f"API响应格式异常: {result}")
+                if attempt < max_retries:
+                    continue  # 重试
+                return "错误：AI服务响应格式异常，请稍后重试。"
+            
+            answer = result['choices'][0]['message']['content']
+            print(f"获取到答案，长度: {len(answer)} 字符")
+            return answer
+            
+        except requests.exceptions.Timeout as e:
+            print(f"API调用超时: {str(e)}")
+            if attempt < max_retries:
+                continue
+            return "错误：AI服务响应超时，请稍后重试。"
+        except requests.exceptions.RequestException as e:
+            print(f"API请求失败: {str(e)}")
+            if attempt < max_retries:
+                continue
+            return f"API请求失败: {str(e)}"
+        except (KeyError, ValueError) as e:
+            print(f"API响应解析错误: {str(e)}")
+            if attempt < max_retries:
+                continue
             return "错误：AI服务响应格式异常，请稍后重试。"
-        
-        answer = result['choices'][0]['message']['content']
-        print(f"获取到答案，长度: {len(answer)} 字符")
-        return answer
-    except requests.exceptions.Timeout:
-        print(f"API调用超时")
-        return "错误：AI服务响应超时，请稍后重试。"
-    except requests.exceptions.RequestException as e:
-        print(f"API请求失败: {str(e)}")
-        return f"API请求失败: {str(e)}"
-    except KeyError as e:
-        print(f"API响应格式错误: {str(e)}")
-        return "错误：AI服务响应格式异常，请稍后重试。"
-    except Exception as e:
-        print(f"API调用失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return f"API调用失败: {str(e)}"
+        except Exception as e:
+            print(f"API调用失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            if attempt < max_retries:
+                continue
+            return f"API调用失败: {str(e)}"
+    
+    return "错误：多次尝试后仍然失败，请稍后重试。"
 
 @app.route('/api/questions', methods=['GET'])
 def get_questions():
