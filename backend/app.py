@@ -250,19 +250,20 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
     if not DEEPSEEK_API_KEY:
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
     
-    # 提取与问题相关的内容
-    relevant_content = extract_relevant_content(knowledge_content, prompt)
-    content_length = len(relevant_content)
-    
-    print(f"原始内容长度: {len(knowledge_content)} 字符")
-    print(f"筛选后内容长度: {content_length} 字符")
-    
-    headers = {
-        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    system_prompt = f"""你是一个专业的法律法规检索助手。请严格根据以下{jurisdiction}的法律法规知识库内容回答问题，不要添加知识库中没有的信息。
+    try:
+        # 提取与问题相关的内容
+        relevant_content = extract_relevant_content(knowledge_content, prompt)
+        content_length = len(relevant_content)
+        
+        print(f"原始内容长度: {len(knowledge_content)} 字符")
+        print(f"筛选后内容长度: {content_length} 字符")
+        
+        headers = {
+            'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        system_prompt = f"""你是一个专业的法律法规检索助手。请严格根据以下{jurisdiction}的法律法规知识库内容回答问题，不要添加知识库中没有的信息。
 
 {jurisdiction}法律法规知识库内容：
 {relevant_content}
@@ -278,20 +279,19 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
 - 不要使用Markdown语法
 - 不要翻译法条原文
 """
-    
-    data = {
-        'model': 'deepseek-chat',
-        'messages': [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': prompt}
-        ],
-        'temperature': 0.1,
-        'max_tokens': 1500  # 减少token数量，专注于精准回答
-    }
-    
-    try:
+        
+        data = {
+            'model': 'deepseek-chat',
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': prompt}
+            ],
+            'temperature': 0.1,
+            'max_tokens': 1500  # 减少token数量，专注于精准回答
+        }
+        
         print(f"正在调用Deepseek API...")
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 60))
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 90))
         response.raise_for_status()
         result = response.json()
         print(f"API调用成功")
@@ -299,8 +299,16 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
     except requests.exceptions.Timeout:
         print(f"API调用超时")
         return "错误：AI服务响应超时，请稍后重试。"
+    except requests.exceptions.RequestException as e:
+        print(f"API请求失败: {str(e)}")
+        return f"API请求失败: {str(e)}"
+    except KeyError as e:
+        print(f"API响应格式错误: {str(e)}")
+        return "错误：AI服务响应格式异常，请稍后重试。"
     except Exception as e:
         print(f"API调用失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return f"API调用失败: {str(e)}"
 
 @app.route('/api/questions', methods=['GET'])
@@ -397,26 +405,40 @@ def research():
         if not knowledge_content:
             print(f"错误：未找到{jurisdiction}的知识库内容")
             return jsonify({'error': f'未找到{jurisdiction}的法律法规文件，请添加以"{jurisdiction}_"开头的.txt或.docx文件'}), 404
-    
-    # 生成引言（简化，不调用API，直接使用固定文本）
-    introduction = f"以下是基于{jurisdiction}相关法律法规的数据隐私准入制度检索结果。"
-    
-    results = []
-    for idx, question_id in enumerate(question_ids, 1):
-        if question_id in QUESTIONS:
-            question = QUESTIONS[question_id]
-            print(f"处理问题 {idx}/{len(question_ids)}: {question['title']}")
-            prompt = f"针对{jurisdiction}，{question['prompt']}。请仅回答此问题，不要涉及其他任何问题的内容。"
-            
-            # 调用AI API
-            answer = call_deepseek_api(prompt, knowledge_content, jurisdiction)
-            
-            results.append({
-                'question_id': question_id,
-                'question_title': question['title'],
-                'answer': answer
-            })
-    
+        
+        # 生成引言（简化，不调用API，直接使用固定文本）
+        introduction = f"以下是基于{jurisdiction}相关法律法规的数据隐私准入制度检索结果。"
+        
+        results = []
+        for idx, question_id in enumerate(question_ids, 1):
+            if question_id in QUESTIONS:
+                question = QUESTIONS[question_id]
+                print(f"处理问题 {idx}/{len(question_ids)}: {question['title']}")
+                
+                try:
+                    prompt = f"针对{jurisdiction}，{question['prompt']}。请仅回答此问题，不要涉及其他任何问题的内容。"
+                    
+                    # 调用AI API
+                    answer = call_deepseek_api(prompt, knowledge_content, jurisdiction)
+                    
+                    results.append({
+                        'question_id': question_id,
+                        'question_title': question['title'],
+                        'answer': answer
+                    })
+                    print(f"问题 {idx} 处理完成")
+                    
+                except Exception as e:
+                    print(f"处理问题 {idx} 时出错: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    # 即使出错也继续处理，添加错误信息
+                    results.append({
+                        'question_id': question_id,
+                        'question_title': question['title'],
+                        'answer': f"处理此问题时出现错误: {str(e)}"
+                    })
+        
         print(f"所有问题处理完成，共 {len(results)} 个问题")
         
         # 构建报告格式
