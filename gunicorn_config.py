@@ -3,15 +3,15 @@ import multiprocessing
 import os
 
 # 绑定地址
-bind = f"0.0.0.0:{os.environ.get('PORT', '5001')}"
+bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 
 # Worker配置
-workers = 1  # Render免费套餐内存有限，使用1个worker
+workers = 2  # Fly.io有1GB内存，可以使用2个worker
 worker_class = 'gthread'  # 使用线程worker，更适合I/O密集型任务
-worker_connections = 100  # 减少并发连接数
-max_requests = 50  # 每50个请求后重启worker
-max_requests_jitter = 5
-threads = 1  # 单线程处理
+worker_connections = 200  # 增加并发连接数
+max_requests = 100  # 每100个请求后重启worker
+max_requests_jitter = 10
+threads = 2  # 2个线程处理
 
 # 超时配置
 timeout = 0  # 禁用超时，允许长时间API调用
