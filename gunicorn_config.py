@@ -9,8 +9,8 @@ bind = f"0.0.0.0:{os.environ.get('PORT', '5001')}"
 workers = 1  # Render免费套餐内存有限，使用1个worker
 worker_class = 'gthread'  # 使用线程worker，更适合I/O密集型任务
 worker_connections = 100  # 减少并发连接数
-max_requests = 10  # 每10个请求后重启worker，更激进地防止内存泄漏
-max_requests_jitter = 2
+max_requests = 50  # 每50个请求后重启worker
+max_requests_jitter = 5
 threads = 1  # 单线程处理
 
 # 超时配置

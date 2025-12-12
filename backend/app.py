@@ -306,7 +306,7 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
                     DEEPSEEK_API_URL, 
                     headers=headers, 
                     json=data, 
-                    timeout=(15, 120),  # 连接超时15秒，读取超时120秒
+                    timeout=(10, 60),  # 连接超时10秒，读取超时60秒
                     stream=False
                 )
                 response.raise_for_status()
@@ -481,6 +481,11 @@ def research():
                     # 强制垃圾回收，释放内存
                     import gc
                     gc.collect()
+                    
+                    # 在问题之间添加短暂延迟，让系统有时间清理
+                    if idx < len(question_ids):
+                        import time
+                        time.sleep(0.5)
                     
                 except Exception as e:
                     print(f"处理问题 {idx} 时出错: {str(e)}")
