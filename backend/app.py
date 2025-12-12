@@ -325,6 +325,34 @@ def health_check():
         'api_configured': DEEPSEEK_API_KEY is not None
     })
 
+@app.route('/api/debug', methods=['GET'])
+def debug_info():
+    """调试信息端点"""
+    import sys
+    knowledge_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../knowledge-base')
+    
+    debug_data = {
+        'python_version': sys.version,
+        'api_key_configured': DEEPSEEK_API_KEY is not None,
+        'api_key_length': len(DEEPSEEK_API_KEY) if DEEPSEEK_API_KEY else 0,
+        'knowledge_dir_exists': os.path.exists(knowledge_dir),
+        'knowledge_dir_path': knowledge_dir,
+        'supported_jurisdictions': JURISDICTIONS,
+        'environment': os.environ.get('RENDER', 'local'),
+        'working_directory': os.getcwd()
+    }
+    
+    # 检查知识库文件
+    if os.path.exists(knowledge_dir):
+        try:
+            files = os.listdir(knowledge_dir)
+            debug_data['knowledge_files'] = [f for f in files if f.endswith(('.txt', '.docx'))]
+            debug_data['total_files'] = len(debug_data['knowledge_files'])
+        except Exception as e:
+            debug_data['knowledge_files_error'] = str(e)
+    
+    return jsonify(debug_data)
+
 @app.route('/', methods=['GET'])
 def serve_frontend():
     """提供前端页面访问"""
@@ -338,28 +366,37 @@ def serve_frontend_assets(path):
 @app.route('/api/research', methods=['POST'])
 def research():
     """执行法律法规检索"""
-    data = request.json
-    jurisdiction = data.get('jurisdiction')
-    question_ids = data.get('questions', [])
-    
-    if not jurisdiction:
-        return jsonify({'error': '请选择司法辖区'}), 400
-    
-    if jurisdiction not in JURISDICTIONS:
-        return jsonify({'error': f'不支持的司法辖区: {jurisdiction}'}), 400
-    
-    if not question_ids:
-        return jsonify({'error': '请选择问题'}), 400
-    
-    # 按问题ID的数字顺序排序，确保输出顺序正确
-    question_ids = sorted(question_ids, key=lambda x: int(x))
-    print(f"问题处理顺序: {question_ids}")
-    
-    # 加载指定司法辖区的知识库
-    print(f"开始处理 {jurisdiction} 的检索请求，问题数量: {len(question_ids)}")
-    knowledge_content = load_knowledge_base(jurisdiction)
-    if not knowledge_content:
-        return jsonify({'error': f'未找到{jurisdiction}的法律法规文件，请添加以"{jurisdiction}_"开头的.txt文件'}), 404
+    try:
+        data = request.json
+        jurisdiction = data.get('jurisdiction')
+        question_ids = data.get('questions', [])
+        
+        print(f"收到检索请求: 司法辖区={jurisdiction}, 问题={question_ids}")
+        
+        if not jurisdiction:
+            return jsonify({'error': '请选择司法辖区'}), 400
+        
+        if jurisdiction not in JURISDICTIONS:
+            return jsonify({'error': f'不支持的司法辖区: {jurisdiction}'}), 400
+        
+        if not question_ids:
+            return jsonify({'error': '请选择问题'}), 400
+        
+        # 检查API密钥
+        if not DEEPSEEK_API_KEY:
+            print("错误：API密钥未配置")
+            return jsonify({'error': '服务配置错误：API密钥未设置，请联系管理员'}), 500
+        
+        # 按问题ID的数字顺序排序，确保输出顺序正确
+        question_ids = sorted(question_ids, key=lambda x: int(x))
+        print(f"问题处理顺序: {question_ids}")
+        
+        # 加载指定司法辖区的知识库
+        print(f"开始处理 {jurisdiction} 的检索请求，问题数量: {len(question_ids)}")
+        knowledge_content = load_knowledge_base(jurisdiction)
+        if not knowledge_content:
+            print(f"错误：未找到{jurisdiction}的知识库内容")
+            return jsonify({'error': f'未找到{jurisdiction}的法律法规文件，请添加以"{jurisdiction}_"开头的.txt或.docx文件'}), 404
     
     # 生成引言（简化，不调用API，直接使用固定文本）
     introduction = f"以下是基于{jurisdiction}相关法律法规的数据隐私准入制度检索结果。"
@@ -380,15 +417,22 @@ def research():
                 'answer': answer
             })
     
-    print(f"所有问题处理完成，共 {len(results)} 个问题")
-    
-    # 构建报告格式
-    report = f"出海目标国数据隐私准入法律检索报告\n\n具体要求请见下文\n\n(一) {jurisdiction}\n\n{introduction}"
-    
-    for result in results:
-        report += f"\n\nQ{result['question_id']}: {result['question_title']}\nA: {result['answer']}"
-    
-    return jsonify({'report': report})
+        print(f"所有问题处理完成，共 {len(results)} 个问题")
+        
+        # 构建报告格式
+        report = f"出海目标国数据隐私准入法律检索报告\n\n具体要求请见下文\n\n(一) {jurisdiction}\n\n{introduction}"
+        
+        for result in results:
+            report += f"\n\nQ{result['question_id']}: {result['question_title']}\nA: {result['answer']}"
+        
+        print(f"报告生成成功，长度: {len(report)} 字符")
+        return jsonify({'report': report})
+        
+    except Exception as e:
+        print(f"检索请求处理失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
 
 def create_word_document(report_data, jurisdiction):
     """创建Word文档"""
