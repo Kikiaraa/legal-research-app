@@ -250,8 +250,8 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
     if not DEEPSEEK_API_KEY:
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
     
-    # 提取与问题相关的内容，限制为4000字符以避免请求过大
-    relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=4000)
+    # 提取与问题相关的内容，限制为3000字符以避免请求过大
+    relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=3000)
     content_length = len(relevant_content)
     
     print(f"原始内容长度: {len(knowledge_content)} 字符")
@@ -287,7 +287,7 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
             {'role': 'user', 'content': prompt}
         ],
         'temperature': 0.1,
-        'max_tokens': 800  # 大幅减少token数量，避免响应过大
+        'max_tokens': 600  # 极度减少token数量，避免响应过大
     }
     
     # 重试机制
@@ -330,9 +330,17 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
             answer = result['choices'][0]['message']['content']
             print(f"获取到答案，长度: {len(answer)} 字符")
             
-            # 清理大对象
+            # 清理所有大对象和变量
             del result
             del response
+            del data
+            del headers
+            del system_prompt
+            del relevant_content
+            
+            # 强制垃圾回收
+            import gc
+            gc.collect()
             
             return answer
             
@@ -482,10 +490,10 @@ def research():
                     import gc
                     gc.collect()
                     
-                    # 在问题之间添加短暂延迟，让系统有时间清理
+                    # 在问题之间添加延迟，让系统有时间清理
                     if idx < len(question_ids):
                         import time
-                        time.sleep(0.5)
+                        time.sleep(2)  # 增加到2秒，给更多清理时间
                     
                 except Exception as e:
                     print(f"处理问题 {idx} 时出错: {str(e)}")
