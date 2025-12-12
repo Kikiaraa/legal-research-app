@@ -8,14 +8,15 @@ bind = f"0.0.0.0:{os.environ.get('PORT', '5001')}"
 # Worker配置
 workers = 1  # Render免费套餐内存有限，使用1个worker
 worker_class = 'sync'  # 同步worker，更稳定
-worker_connections = 1000
-max_requests = 100  # 每100个请求后重启worker，防止内存泄漏
-max_requests_jitter = 10
+worker_connections = 100  # 减少并发连接数
+max_requests = 10  # 每10个请求后重启worker，更激进地防止内存泄漏
+max_requests_jitter = 2
+threads = 1  # 单线程处理
 
 # 超时配置
-timeout = 300  # 5分钟超时
-graceful_timeout = 30  # 优雅关闭超时
-keepalive = 5
+timeout = 600  # 10分钟超时，给API调用更多时间
+graceful_timeout = 60  # 优雅关闭超时
+keepalive = 2
 
 # 日志配置
 loglevel = 'info'

@@ -250,8 +250,8 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
     if not DEEPSEEK_API_KEY:
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
     
-    # 提取与问题相关的内容，限制为5000字符以避免请求过大
-    relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=5000)
+    # 提取与问题相关的内容，限制为4000字符以避免请求过大
+    relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=4000)
     content_length = len(relevant_content)
     
     print(f"原始内容长度: {len(knowledge_content)} 字符")
@@ -287,7 +287,7 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
             {'role': 'user', 'content': prompt}
         ],
         'temperature': 0.1,
-        'max_tokens': 1200  # 进一步减少token数量
+        'max_tokens': 800  # 大幅减少token数量，避免响应过大
     }
     
     # 重试机制
@@ -329,6 +329,11 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction, max_retries=2):
             
             answer = result['choices'][0]['message']['content']
             print(f"获取到答案，长度: {len(answer)} 字符")
+            
+            # 清理大对象
+            del result
+            del response
+            
             return answer
             
         except requests.exceptions.Timeout as e:
@@ -473,6 +478,10 @@ def research():
                     })
                     print(f"问题 {idx} 处理完成")
                     
+                    # 强制垃圾回收，释放内存
+                    import gc
+                    gc.collect()
+                    
                 except Exception as e:
                     print(f"处理问题 {idx} 时出错: {str(e)}")
                     import traceback
@@ -483,6 +492,10 @@ def research():
                         'question_title': question['title'],
                         'answer': f"处理此问题时出现错误: {str(e)}"
                     })
+                    
+                    # 出错后也进行垃圾回收
+                    import gc
+                    gc.collect()
         
         print(f"所有问题处理完成，共 {len(results)} 个问题")
         
