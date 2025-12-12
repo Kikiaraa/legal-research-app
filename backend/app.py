@@ -251,8 +251,8 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
         return "错误：未配置 DEEPSEEK_API_KEY 环境变量，无法调用AI服务。请联系管理员配置API密钥。"
     
     try:
-        # 提取与问题相关的内容
-        relevant_content = extract_relevant_content(knowledge_content, prompt)
+        # 提取与问题相关的内容，限制为6000字符以避免请求过大
+        relevant_content = extract_relevant_content(knowledge_content, prompt, max_chars=6000)
         content_length = len(relevant_content)
         
         print(f"原始内容长度: {len(knowledge_content)} 字符")
@@ -291,11 +291,26 @@ def call_deepseek_api(prompt, knowledge_content, jurisdiction):
         }
         
         print(f"正在调用Deepseek API...")
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 90))
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=(10, 90), stream=False)
         response.raise_for_status()
+        
+        # 检查响应大小
+        content_length = response.headers.get('content-length')
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB限制
+            print(f"警告：API响应过大: {content_length} bytes")
+            return "错误：AI服务响应数据过大，请简化问题或联系管理员。"
+        
         result = response.json()
         print(f"API调用成功")
-        return result['choices'][0]['message']['content']
+        
+        # 验证响应结构
+        if 'choices' not in result or not result['choices']:
+            print(f"API响应格式异常: {result}")
+            return "错误：AI服务响应格式异常，请稍后重试。"
+        
+        answer = result['choices'][0]['message']['content']
+        print(f"获取到答案，长度: {len(answer)} 字符")
+        return answer
     except requests.exceptions.Timeout:
         print(f"API调用超时")
         return "错误：AI服务响应超时，请稍后重试。"
